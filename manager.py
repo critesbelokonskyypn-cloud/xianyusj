@@ -75,10 +75,23 @@ with tab_dashboard:
         all_data['date'] = pd.to_datetime(all_data['date'])
         latest_date = all_data['date'].max()
         
+        # --- 新增：为图表提前全局计算“点击率”和“转化率” ---
+        all_data['inquiries'] = all_data.get('inquiries', 0) # 兼容老数据
+        all_data['ctr'] = all_data.apply(lambda row: row['views'] / row['exposure'] if row['exposure'] > 0 else 0, axis=1)
+        all_data['cvr'] = all_data.apply(lambda row: row['orders'] / row['inquiries'] if row['inquiries'] > 0 else 0, axis=1)
+        
         st.markdown("### 📈 近期趋势多维对比图")
         col_metric, col_prods = st.columns([1, 3])
         with col_metric:
-            metric_dict = {"销售额 (元)": "sales", "询单量 (次)": "inquiries", "浏览量 (次)": "views", "曝光量 (次)": "exposure"}
+            # 升级：把 CTR 和 CVR 加入到下拉菜单中
+            metric_dict = {
+                "销售额 (元)": "sales", 
+                "点击率 (CTR)": "ctr", 
+                "询单转化率 (CVR)": "cvr", 
+                "询单量 (次)": "inquiries", 
+                "浏览量 (次)": "views", 
+                "曝光量 (次)": "exposure"
+            }
             target_metric = st.selectbox("👉 选择对比指标", list(metric_dict.keys()))
             metric_col = metric_dict[target_metric]
             
@@ -90,7 +103,9 @@ with tab_dashboard:
             filtered_data = all_data[all_data['product'].isin(selected_prods)]
             # 只有当数据包含超过一天时，画折线图才有意义
             if len(filtered_data['date'].unique()) > 1:
-                pivot_data = filtered_data.pivot_table(index='date', columns='product', values=metric_col, aggfunc='sum')
+                # 升级：计算率的时候用平均值，计算具体数值的时候用总和
+                agg_func = 'mean' if target_metric in ["点击率 (CTR)", "询单转化率 (CVR)"] else 'sum'
+                pivot_data = filtered_data.pivot_table(index='date', columns='product', values=metric_col, aggfunc=agg_func)
                 st.line_chart(pivot_data, height=400)
             else:
                 st.info("📌 数据天数不足2天，暂无法绘制趋势折线图，请继续录入明日数据即可激活。")
